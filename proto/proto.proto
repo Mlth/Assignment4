@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package ring;
+option go_package = "https://github.com/Mlth/Assignment4;ring";
+
+
+service Ring {
+    rpc contact (Request) returns (emptyMessage) {}
+}
+
+message Request {
+    int32 id = 1;
+}
+
+message emptyMessage {
+}
