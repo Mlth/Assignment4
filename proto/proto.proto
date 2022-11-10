@@ -5,11 +5,12 @@ option go_package = "https://github.com/Mlth/Assignment4;ring";
 
 
 service Ring {
-    rpc contact (Request) returns (emptyMessage) {}
+    rpc send (Request) returns (emptyMessage) {}
 }
 
 message Request {
     int32 id = 1;
+    string type = 2;
 }
 
 message emptyMessage {
