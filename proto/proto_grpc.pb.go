@@ -18,7 +18,8 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RingClient interface {
-	Send(ctx context.Context, in *Request, opts ...grpc.CallOption) (*EmptyMessage, error)
+	PassToken(ctx context.Context, in *Token, opts ...grpc.CallOption) (*EmptyMessage, error)
+	CheckConnection(ctx context.Context, in *ConnectionVerification, opts ...grpc.CallOption) (*EmptyMessage, error)
 }
 
 type ringClient struct {
@@ -29,9 +30,18 @@ func NewRingClient(cc grpc.ClientConnInterface) RingClient {
 	return &ringClient{cc}
 }
 
-func (c *ringClient) Send(ctx context.Context, in *Request, opts ...grpc.CallOption) (*EmptyMessage, error) {
+func (c *ringClient) PassToken(ctx context.Context, in *Token, opts ...grpc.CallOption) (*EmptyMessage, error) {
 	out := new(EmptyMessage)
-	err := c.cc.Invoke(ctx, "/ring.Ring/send", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/ring.Ring/PassToken", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ringClient) CheckConnection(ctx context.Context, in *ConnectionVerification, opts ...grpc.CallOption) (*EmptyMessage, error) {
+	out := new(EmptyMessage)
+	err := c.cc.Invoke(ctx, "/ring.Ring/CheckConnection", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +52,8 @@ func (c *ringClient) Send(ctx context.Context, in *Request, opts ...grpc.CallOpt
 // All implementations must embed UnimplementedRingServer
 // for forward compatibility
 type RingServer interface {
-	Send(context.Context, *Request) (*EmptyMessage, error)
+	PassToken(context.Context, *Token) (*EmptyMessage, error)
+	CheckConnection(context.Context, *ConnectionVerification) (*EmptyMessage, error)
 	mustEmbedUnimplementedRingServer()
 }
 
@@ -50,8 +61,11 @@ type RingServer interface {
 type UnimplementedRingServer struct {
 }
 
-func (UnimplementedRingServer) Send(context.Context, *Request) (*EmptyMessage, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Send not implemented")
+func (UnimplementedRingServer) PassToken(context.Context, *Token) (*EmptyMessage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PassToken not implemented")
+}
+func (UnimplementedRingServer) CheckConnection(context.Context, *ConnectionVerification) (*EmptyMessage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CheckConnection not implemented")
 }
 func (UnimplementedRingServer) mustEmbedUnimplementedRingServer() {}
 
@@ -66,20 +80,38 @@ func RegisterRingServer(s grpc.ServiceRegistrar, srv RingServer) {
 	s.RegisterService(&Ring_ServiceDesc, srv)
 }
 
-func _Ring_Send_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Request)
+func _Ring_PassToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Token)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RingServer).Send(ctx, in)
+		return srv.(RingServer).PassToken(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/ring.Ring/send",
+		FullMethod: "/ring.Ring/PassToken",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RingServer).Send(ctx, req.(*Request))
+		return srv.(RingServer).PassToken(ctx, req.(*Token))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Ring_CheckConnection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConnectionVerification)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RingServer).CheckConnection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/ring.Ring/CheckConnection",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RingServer).CheckConnection(ctx, req.(*ConnectionVerification))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -92,8 +124,12 @@ var Ring_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*RingServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "send",
-			Handler:    _Ring_Send_Handler,
+			MethodName: "PassToken",
+			Handler:    _Ring_PassToken_Handler,
+		},
+		{
+			MethodName: "CheckConnection",
+			Handler:    _Ring_CheckConnection_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

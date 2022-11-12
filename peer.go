@@ -15,24 +15,27 @@ import (
 	"google.golang.org/grpc"
 )
 
+var reader *bufio.Reader
+
 func main() {
+	reader = bufio.NewReader(os.Stdin)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	arg1, _ := strconv.ParseInt(os.Args[1], 10, 32)
+	arg2, _ := strconv.ParseInt(os.Args[2], 10, 32)
 	ownPort := int32(arg1) + 5000
+	totalPorts := int32(arg2)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	p := &peer{
-		id:              ownPort,
-		participant:     false,
-		inCriticalState: false,
-		nextPeer:        nil,
-		ctx:             ctx,
+		id:                           ownPort,
+		wantsToken:                   false,
+		previousPeerHasConnectedToMe: false,
+		nextPeer:                     nil,
+		ctx:                          ctx,
 	}
-
-	var maxClient int32 = 5
 
 	// Create listener tcp on port ownPort
 	list, err := net.Listen("tcp", fmt.Sprintf(":%v", ownPort))
@@ -50,8 +53,8 @@ func main() {
 
 	}()
 
-	fmt.Printf("Trying to dial: %v\n", (((ownPort + 1) % maxClient) + 5000))
-	conn, err := grpc.Dial(fmt.Sprintf(":%v", ((ownPort+1)%maxClient)+5000), grpc.WithInsecure(), grpc.WithBlock())
+	fmt.Printf("Trying to dial: %v\n", (((ownPort + 1) % totalPorts) + 5000))
+	conn, err := grpc.Dial(fmt.Sprintf(":%v", ((ownPort+1)%totalPorts)+5000), grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		log.Fatalf("Could not connect: %s", err)
 	}
@@ -59,56 +62,56 @@ func main() {
 	p.nextPeer = ring.NewRingClient(conn)
 
 	go takeInput(p, &wg)
+
+	if ownPort == 5000 {
+		p.nextPeer.CheckConnection(p.ctx, &ring.ConnectionVerification{Id: p.id})
+		if p.previousPeerHasConnectedToMe {
+			p.nextPeer.PassToken(ctx, &ring.Token{})
+		}
+	}
+
 	wg.Wait()
 }
 
 func takeInput(p *peer, wg *sync.WaitGroup) {
 	defer wg.Done()
-	reader := bufio.NewReader(os.Stdin)
 	for {
-		if !p.participant {
-			log.Println("Do you want to enter the critical state? (type 'yes' or 'no')")
-			inputMessage, _ := reader.ReadString('\n')
-			inputMessage = strings.TrimSpace(inputMessage)
-			if inputMessage == "yes" {
-				p.participant = true
-				p.nextPeer.Send(p.ctx, &ring.Request{Id: p.id, Type: "election"})
-				p.participant = false
-				for {
-					log.Println("Do you want to exit the critical state? (type 'yes' or 'no')")
-					inputMessage2, _ := reader.ReadString('\n')
-					inputMessage2 = strings.TrimSpace(inputMessage2)
-					if inputMessage2 == "yes" {
-						p.inCriticalState = false
-						break
-					}
-				}
+		log.Println("Do you want to enter the critical state? (type 'yes' or 'no')")
+		inputMessage, _ := reader.ReadString('\n')
+		inputMessage = strings.TrimSpace(inputMessage)
+		if inputMessage == "yes" {
+			p.wantsToken = true
+			log.Println("Okay! Wait for the token to be passed along to you.")
+			for p.wantsToken {
+
 			}
 		}
 	}
 }
 
-func (p *peer) Send(ctx context.Context, req *ring.Request) (*ring.EmptyMessage, error) {
-	if req.Type == "election" {
-		for p.inCriticalState {
+func (p *peer) CheckConnection(ctx context.Context, msg *ring.ConnectionVerification) (*ring.EmptyMessage, error) {
+	if msg.Id == p.id {
+		p.previousPeerHasConnectedToMe = true
+	} else {
+		for p.nextPeer == nil {
 
 		}
+		p.nextPeer.CheckConnection(p.ctx, &ring.ConnectionVerification{Id: msg.Id})
 	}
-	if req.Type == "election" {
-		if p.id == req.Id {
-			log.Println("Peer with id ", p.id, " is in critical state")
-			p.inCriticalState = true
-			p.participant = false
-			p.nextPeer.Send(ctx, &ring.Request{Id: p.id, Type: "elected"})
-		} else if req.Id > p.id || !p.participant {
-			p.nextPeer.Send(ctx, &ring.Request{Id: req.Id, Type: "election"})
-		} else if req.Id < p.id && p.participant {
-			p.nextPeer.Send(ctx, &ring.Request{Id: p.id, Type: "election"})
-		}
-	} else if req.Type == "elected" {
-		if p.id != req.Id {
-			log.Println("Peer with id ", req.Id, " is in critical state")
-			p.nextPeer.Send(ctx, &ring.Request{Id: req.Id, Type: "elected"})
+	return &ring.EmptyMessage{}, nil
+}
+
+func (p *peer) PassToken(ctx context.Context, token *ring.Token) (*ring.EmptyMessage, error) {
+	if !p.wantsToken {
+		go p.nextPeer.PassToken(p.ctx, &ring.Token{})
+	} else {
+		log.Println("You are now in the critical state. Do you want to exit the state? (type 'yes' or 'no')")
+		inputMessage, _ := reader.ReadString('\n')
+		inputMessage = strings.TrimSpace(inputMessage)
+		if inputMessage == "yes" {
+			log.Println("Okay! You have passed the token along")
+			p.wantsToken = false
+			go p.nextPeer.PassToken(p.ctx, &ring.Token{})
 		}
 	}
 	return &ring.EmptyMessage{}, nil
@@ -116,9 +119,9 @@ func (p *peer) Send(ctx context.Context, req *ring.Request) (*ring.EmptyMessage,
 
 type peer struct {
 	ring.UnimplementedRingServer
-	id              int32
-	participant     bool
-	inCriticalState bool
-	nextPeer        ring.RingClient
-	ctx             context.Context
+	id                           int32
+	wantsToken                   bool
+	previousPeerHasConnectedToMe bool
+	nextPeer                     ring.RingClient
+	ctx                          context.Context
 }
