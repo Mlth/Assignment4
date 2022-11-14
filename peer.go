@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	ring "github.com/Mlth/Assignment4/proto"
-	"google.golang.org/grpc"
 	"io"
 	"log"
 	"net"
@@ -13,6 +11,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	ring "github.com/Mlth/Assignment4/proto"
+	"google.golang.org/grpc"
 )
 
 var reader *bufio.Reader
@@ -132,15 +133,18 @@ func (p *peer) PassToken(ctx context.Context, token *ring.Token) (*ring.EmptyMes
 	if !p.wantsToken {
 		go p.nextPeer.PassToken(p.ctx, &ring.Token{})
 	} else {
-		log.Println(p.id, ": You are now in the critical state. Do you want to exit the state? (type 'yes' or 'no')")
-		inputMessage, _ := reader.ReadString('\n')
-		inputMessage = strings.TrimSpace(inputMessage)
-		log.Println("User (", p.id, "):", inputMessage)
-		//When the peer wants to leave the critical state, a message is printed to them, and the token is passed on to the next peer.
-		if inputMessage == "yes" {
-			log.Println(p.id, ": Okay! You have passed the token along")
-			p.wantsToken = false
-			go p.nextPeer.PassToken(p.ctx, &ring.Token{})
+		for {
+			log.Println(p.id, ": You are now in the critical state. Do you want to exit the state? (type 'yes' or 'no')")
+			inputMessage, _ := reader.ReadString('\n')
+			inputMessage = strings.TrimSpace(inputMessage)
+			log.Println("User (", p.id, "):", inputMessage)
+			//When the peer wants to leave the critical state, a message is printed to them, and the token is passed on to the next peer.
+			if inputMessage == "yes" {
+				log.Println(p.id, ": Okay! You have passed the token along")
+				p.wantsToken = false
+				go p.nextPeer.PassToken(p.ctx, &ring.Token{})
+				break
+			}
 		}
 	}
 	return &ring.EmptyMessage{}, nil
