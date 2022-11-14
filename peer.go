@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	ring "github.com/Mlth/Assignment4/proto"
+	"google.golang.org/grpc"
 	"io"
 	"log"
 	"net"
@@ -11,14 +13,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	ring "github.com/Mlth/Assignment4/proto"
-	"google.golang.org/grpc"
 )
 
 var reader *bufio.Reader
 
 func main() {
+
 	//Creating .log-file for logging output from program, while still printing to the command line
 	err := os.Remove("OutputLog.log")
 	if err != nil {
@@ -37,7 +37,7 @@ func main() {
 	wg.Add(1)
 	arg1, _ := strconv.ParseInt(os.Args[1], 10, 32)
 	arg2, _ := strconv.ParseInt(os.Args[2], 10, 32)
-	ownPort := int32(arg1) + 5000
+	ownPort := int32(arg1) + 5500
 	totalPorts := int32(arg2)
 
 	//Setting up context
@@ -46,11 +46,10 @@ func main() {
 
 	//Instantiating a peer
 	p := &peer{
-		id:                           ownPort,
-		wantsToken:                   false,
-		previousPeerHasConnectedToMe: false,
-		nextPeer:                     nil,
-		ctx:                          ctx,
+		id:         ownPort,
+		wantsToken: false,
+		nextPeer:   nil,
+		ctx:        ctx,
 	}
 
 	// Creating listener on ownPort
@@ -72,8 +71,8 @@ func main() {
 	}()
 
 	//Making connection to next peer
-	log.Println(p.id, ": Trying to dial:", (((ownPort + 1) % totalPorts) + 5000))
-	conn, err := grpc.Dial(fmt.Sprintf(":%v", ((ownPort+1)%totalPorts)+5000), grpc.WithInsecure(), grpc.WithBlock())
+	log.Println(p.id, ": Trying to dial:", (((ownPort + 1) % totalPorts) + 5500))
+	conn, err := grpc.Dial(fmt.Sprintf(":%v", ((ownPort+1)%totalPorts)+5500), grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		log.Fatalf("Could not connect: %s", err)
 	}
@@ -84,23 +83,21 @@ func main() {
 	go takeInput(p, &wg)
 
 	//If the current peer has the lowest id/portNumber out of all peers, send a connectionVerification to the nextPeer
-	if ownPort == 5000 {
+	if ownPort == 5500 {
 		p.nextPeer.CheckConnection(p.ctx, &ring.ConnectionVerification{Id: p.id})
-		if p.previousPeerHasConnectedToMe {
-			p.nextPeer.PassToken(ctx, &ring.Token{})
-		}
 	}
-
 	wg.Wait()
 }
 
 func takeInput(p *peer, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
+		//Waiting for the user to choose whether to enter the critical state
 		log.Println(p.id, ": Do you want to enter the critical state? (type 'yes' or 'no')")
 		inputMessage, _ := reader.ReadString('\n')
 		inputMessage = strings.TrimSpace(inputMessage)
 		log.Println("User (", p.id, "):", inputMessage)
+		//If the peer wants to enter the critical state, the peer's 'wantsToken' is set to true, and the peer waits for it to be changed back.
 		if inputMessage == "yes" {
 			p.wantsToken = true
 			log.Println(p.id, ": Okay! Wait for the token to be passed along to you.")
@@ -111,9 +108,13 @@ func takeInput(p *peer, wg *sync.WaitGroup) {
 	}
 }
 
+/*
+This method sends a connectionVerification to the next peer, until the verification has reached all peers.
+when this happens, the token is passed to the first peer
+*/
 func (p *peer) CheckConnection(ctx context.Context, msg *ring.ConnectionVerification) (*ring.EmptyMessage, error) {
 	if msg.Id == p.id {
-		p.previousPeerHasConnectedToMe = true
+		p.nextPeer.PassToken(ctx, &ring.Token{})
 	} else {
 		for p.nextPeer == nil {
 
@@ -123,6 +124,10 @@ func (p *peer) CheckConnection(ctx context.Context, msg *ring.ConnectionVerifica
 	return &ring.EmptyMessage{}, nil
 }
 
+/*
+If the peer does not want the token, it passes it on to the next peer.
+If the peer does want the token, it prints that the peer is in the critical state, and waits for input from the user to leave the state.
+*/
 func (p *peer) PassToken(ctx context.Context, token *ring.Token) (*ring.EmptyMessage, error) {
 	if !p.wantsToken {
 		go p.nextPeer.PassToken(p.ctx, &ring.Token{})
@@ -131,6 +136,7 @@ func (p *peer) PassToken(ctx context.Context, token *ring.Token) (*ring.EmptyMes
 		inputMessage, _ := reader.ReadString('\n')
 		inputMessage = strings.TrimSpace(inputMessage)
 		log.Println("User (", p.id, "):", inputMessage)
+		//When the peer wants to leave the critical state, a message is printed to them, and the token is passed on to the next peer.
 		if inputMessage == "yes" {
 			log.Println(p.id, ": Okay! You have passed the token along")
 			p.wantsToken = false
@@ -142,9 +148,8 @@ func (p *peer) PassToken(ctx context.Context, token *ring.Token) (*ring.EmptyMes
 
 type peer struct {
 	ring.UnimplementedRingServer
-	id                           int32
-	wantsToken                   bool
-	previousPeerHasConnectedToMe bool
-	nextPeer                     ring.RingClient
-	ctx                          context.Context
+	id         int32
+	wantsToken bool
+	nextPeer   ring.RingClient
+	ctx        context.Context
 }
