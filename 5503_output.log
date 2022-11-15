@@ -1,0 +1,8 @@
+2022/11/14 17:13:48 5503 : Trying to dial: 5504
+2022/11/14 17:13:49 5503 : Do you want to enter the critical state? (type 'yes' or 'no')
+2022/11/14 17:15:03 User ( 5503 ): yes
+2022/11/14 17:15:03 5503 : Okay! Wait for the token to be passed along to you.
+2022/11/14 17:15:10 5503 : You are now in the critical state. Do you want to exit the state? (type 'yes' or 'no')
+2022/11/14 17:15:13 User ( 5503 ): yes
+2022/11/14 17:15:13 5503 : Okay! You have passed the token along
+2022/11/14 17:15:13 5503 : Do you want to enter the critical state? (type 'yes' or 'no')

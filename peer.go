@@ -20,18 +20,6 @@ var reader *bufio.Reader
 
 func main() {
 
-	//Creating .log-file for logging output from program, while still printing to the command line
-	err := os.Remove("OutputLog.log")
-	if err != nil {
-	}
-	f, err := os.OpenFile("OutputLog.log", os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
-	mw := io.MultiWriter(os.Stdout, f)
-	if err != nil {
-		fmt.Println("log does not work")
-	}
-	defer f.Close()
-	log.SetOutput(mw)
-
 	//Making reader and waitGroup, and taking arguments for the id's of the peers.
 	reader = bufio.NewReader(os.Stdin)
 	var wg sync.WaitGroup
@@ -40,6 +28,19 @@ func main() {
 	arg2, _ := strconv.ParseInt(os.Args[2], 10, 32)
 	ownPort := int32(arg1) + 5500
 	totalPorts := int32(arg2)
+
+	//Creating .log-file for logging output from program, while still printing to the command line
+	stringy := fmt.Sprintf("%v_output.log", ownPort)
+	err := os.Remove(stringy)
+	if err != nil {
+	}
+	f, err := os.OpenFile(stringy, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
+	mw := io.MultiWriter(os.Stdout, f)
+	if err != nil {
+		fmt.Println("log does not work")
+	}
+	defer f.Close()
+	log.SetOutput(mw)
 
 	//Setting up context
 	ctx, cancel := context.WithCancel(context.Background())
